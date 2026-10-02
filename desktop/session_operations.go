@@ -10,6 +10,7 @@ import (
 
 	"reasonix/desktop/internal/workspacestate"
 	"reasonix/internal/agent"
+	"reasonix/internal/identitylock"
 	"reasonix/internal/session"
 )
 
@@ -68,6 +69,7 @@ func sessionOperationErrorForTarget(err error, targetKey, operationID string) er
 		return &copy
 	}
 	if historicalSourceBusyError(err) {
+		slog.Info("desktop: session operation busy", "target", targetKey, "operation", operationID, "cause", sessionBusyCause(err))
 		return &SessionOperationError{Code: sessionOperationBusy, Message: "Another operation is using this session. Try again shortly.", TargetKey: targetKey, OperationID: operationID, Retryable: true}
 	}
 	switch {
@@ -88,6 +90,7 @@ func sessionOperationErrorForTarget(err error, targetKey, operationID string) er
 			TargetKey: targetKey, OperationID: operationID,
 		}
 	case errors.Is(err, errTopicArchiveBusy), errors.Is(err, errTopicHasActiveWork), errors.Is(err, agent.ErrSessionLeaseHeld):
+		slog.Info("desktop: session operation busy", "target", targetKey, "operation", operationID, "cause", sessionBusyCause(err))
 		return &SessionOperationError{
 			Code: sessionOperationBusy, Message: "Another operation is using this session. Try again shortly.",
 			TargetKey: targetKey, OperationID: operationID, Retryable: true,
@@ -102,6 +105,26 @@ func sessionOperationErrorForTarget(err error, targetKey, operationID string) er
 		Code: sessionOperationFailed, Message: "Unable to complete this session operation.",
 		TargetKey: targetKey, OperationID: operationID,
 	}
+}
+
+// sessionBusyCause names which holder refused a busy operation. The user-facing
+// code stays operation_busy; the host log keeps the identity.
+func sessionBusyCause(err error) string {
+	switch {
+	case errors.Is(err, errTopicArchiveBusy):
+		return "runtime_mutation"
+	case errors.Is(err, errTopicHasActiveWork):
+		return "active_work"
+	case errors.Is(err, agent.ErrSessionLeaseHeld):
+		return "session_lease"
+	case errors.Is(err, session.ErrWriterOwned):
+		return "writer_owned"
+	case errors.Is(err, identitylock.ErrHeld):
+		return "source_lock"
+	case errors.Is(err, errHistoricalSourceBusy):
+		return "historical_source"
+	}
+	return "unknown"
 }
 
 // RenameSessionTarget performs a manual persistent rename without opening or

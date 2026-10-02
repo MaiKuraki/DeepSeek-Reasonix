@@ -21,7 +21,7 @@ func (a *App) archiveHistoricalSource(selector SessionSelector) (SessionMutation
 	if selector.Source != nil && selector.Source.HostID != "" && selector.Source.HostID != localDesktopHostID {
 		return SessionMutationResult{}, newSessionOperationError("unsupported", "This source belongs to another host.")
 	}
-	runtimeRelease, ok := a.tryLockRuntimeMutation("archive historical source")
+	runtimeRelease, ok := a.tryLockRuntimeMutationBounded("archive historical source")
 	if !ok {
 		return SessionMutationResult{}, sessionOperationErrorForTarget(errTopicArchiveBusy, "", "")
 	}
