@@ -2,6 +2,140 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.39.8",
+      "date": "2026-10-02",
+      "channel": "stable",
+      "targetingVersion": 1,
+      "title": {
+        "en": "Reasonix 1.39.8",
+        "zh": "Reasonix 1.39.8"
+      },
+      "summary": {
+        "en": "Fixes for session delete and archive failing in projects shared with Studio, archiving a legacy recovery chain in one action, sub-agent tool calls showing up in the main conversation, and an intermittent Command Code error.",
+        "zh": "修复与 Studio 共用的项目里删除、归档会话反复失败，旧版恢复链一次归档，子代理工具调用出现在主对话里，以及 Command Code 的一个偶发错误。"
+      },
+      "surfaces": [
+        "desktop",
+        "cli"
+      ],
+      "guides": [],
+      "highlights": [
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Deleting or archiving a session no longer fails over and over after the catalog starts rescanning",
+            "zh": "目录反复重扫时，删除或归档会话不再一直失败"
+          },
+          "body": {
+            "en": "In some projects (seen when the same project folder was also opened by Studio 2.x) the session catalog rescanned the folder every few seconds even though no session had changed, and every delete or archive then failed with \"This session is already performing the same operation\". Lock files, temporary files, sidecar files and subdirectory timestamps no longer trigger a rescan; only session transcripts, their metadata and event logs do. Rescans of one folder now back off from 1 s up to 60 s, a real delete or rename still skips the backoff, and the archive path waits up to 1.5 s for a busy lock instead of giving up at once. No session file is written, moved or deleted.",
+            "zh": "在部分项目里（同一个项目文件夹也被 Studio 2.x 打开过时出现），目录没有任何会话变化，却每隔几秒被重新扫描一次，随后任何删除或归档都会失败，提示「该会话正在执行相同操作」。现在锁文件、临时文件、附属文件和子目录的时间戳不再触发重扫，只有会话记录、元数据和事件日志的变化才会；同一目录的重扫会从 1 秒起逐步退避到 60 秒，真实的删除和改名不受退避影响；归档遇到忙碌的锁时最多等待 1.5 秒，不再立刻放弃。不会写入、移动或删除任何会话文件。"
+          },
+          "refs": [
+            11693,
+            11722
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Archiving a legacy recovery row now archives the whole recovery chain in one action",
+            "zh": "归档旧版恢复行时，整条恢复链一次归档"
+          },
+          "body": {
+            "en": "Archiving one row of an old recovery lineage used to retire only one to four snapshots, so each click left a new copy behind and the same set had to be archived dozens of times. The whole chain is now found by walking the parent links, and archived in one action. The lock is released between snapshots, so other tabs keep working while a long chain is archived. If a snapshot cannot be archived the rest still are, the result reports how many remain, and running the action again finishes it. Source files are never deleted or rewritten, and archived copies stay restorable from Archived.",
+            "zh": "归档旧版恢复链里的某一行时，原来只会处理一到四个快照，每点一次都会留下新的副本，同一批要归档几十次。现在会顺着父节点找到整条恢复链，并一次归档。每个快照之间会释放锁，所以归档很长的链时，其他标签仍可正常使用。个别快照归档失败时其余照常归档，结果会报告还剩几个，再执行一次即可补完。源文件不会被删除或改写，已归档的副本仍可从「已归档」恢复。"
+          },
+          "refs": [
+            11581,
+            11717
+          ]
+        }
+      ],
+      "changes": {
+        "new": [],
+        "improved": [],
+        "fixed": [
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "Sub-agent tool calls stay inside their sub-agent card",
+              "zh": "子代理的工具调用留在各自的子代理卡片里"
+            },
+            "body": {
+              "en": "Tool calls made by a background sub-agent (task or fleet) appeared as separate rows in the main conversation, without arguments or results, also after reopening a session. The parent id of each call was dropped when a session is read from its transcript records; it is now kept, so the calls nest under their sub-agent card again.",
+              "zh": "后台子代理（task 或 fleet）发出的工具调用会作为独立的行出现在主对话里，没有参数和结果，重新打开会话后也一样。原因是从会话记录读取时丢掉了每个调用的父级标识；现在保留了它，这些调用重新嵌套在各自的子代理卡片里。"
+            },
+            "refs": [
+              11338,
+              11690
+            ]
+          },
+          {
+            "targets": [
+              "desktop",
+              "cli"
+            ],
+            "title": {
+              "en": "Command Code requests retry once after an intermittent anonymous 400",
+              "zh": "Command Code 的请求遇到偶发的匿名 400 时会重试一次"
+            },
+            "body": {
+              "en": "Command Code's Responses route sometimes answers an unchanged request body with an anonymous 400 that succeeds when sent again. For that host and that error shape the request is now resent once with the same body; named schema errors, other hosts and other statuses are not retried.",
+              "zh": "Command Code 的 Responses 接口偶尔会对同一份请求体返回一个没有具体信息的 400，再发一次就成功。现在对这个服务商和这种错误形态，会用同一份请求体重发一次；带具体信息的参数错误、其他服务商和其他状态码都不会重试。"
+            },
+            "refs": [
+              11617,
+              11666
+            ]
+          }
+        ]
+      },
+      "upgrade": [],
+      "risks": [
+        {
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Archiving a very long recovery chain can take a while",
+            "zh": "归档很长的恢复链可能需要一段时间"
+          },
+          "body": {
+            "en": "Each snapshot of the chain is archived separately (about 2 MB each in the reported case), so a chain of dozens can take tens of seconds. Other work continues in the meantime; if the action reports that some snapshots remain, run it again.",
+            "zh": "恢复链里的每个快照都会单独归档（报告的案例里每个约 2 MB），几十个快照可能要花几十秒。期间其他操作可以继续；如果提示还有快照未完成，再执行一次即可。"
+          },
+          "refs": [
+            11717
+          ]
+        }
+      ],
+      "contributors": [
+        "Harbor404"
+      ],
+      "links": {
+        "github": "https://github.com/esengine/DeepSeek-Reasonix/releases/tag/desktop-v1.39.8",
+        "compare": "https://github.com/esengine/DeepSeek-Reasonix/compare/desktop-v1.39.7...desktop-v1.39.8",
+        "download": "https://reasonix.io/?download=desktop&channel=stable#start"
+      },
+      "releaseId": "1.39.8",
+      "baseVersion": "1.39.8",
+      "status": "reviewed",
+      "previousRelease": "1.39.7",
+      "builds": {
+        "cli": "v1.39.8",
+        "desktop": "v1.39.8",
+        "npm": "1.39.8"
+      }
+    },
+    {
       "version": "1.39.7",
       "date": "2026-10-02",
       "channel": "stable",
