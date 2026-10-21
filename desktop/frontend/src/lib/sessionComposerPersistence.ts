@@ -9,6 +9,7 @@ import { submissionOutcome, modelApplicationError, type ModelApplicationDetails 
 export const emptySessionInput = (): PersistentComposerDraft => ({ text: "", invocations: [], attachments: [], workspaceRefs: [], pastedBlocks: [], openPastedLabels: [], sessionRefs: [], selectedTextRefs: [] });
 type Entry = { ref: SessionRef; state?: SessionComposerState; content: PersistentComposerDraft; generation: number; version: number; saved: number; users: number; touched: number;
   retired?: boolean; retirement: Promise<void>; retire: () => void;
+  inputTasks: Set<Promise<unknown>>;
   application?: ModelApplicationDetails; error?: string; taskError?: string; unreadable?: boolean; registering?: boolean; recovering?: Promise<void>; unsubmittedId?: string; settledId?: string; tasks: Set<Promise<unknown>>; loading?: Promise<void>; saving?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
 const entries = new Map<string, Entry>();
 const tabs = new Map<string, string>();
@@ -92,7 +93,7 @@ function entryFor(ref: SessionRef) {
   if (!entry) {
     let retire!: () => void;
     const retirement = new Promise<void>(resolve => { retire = resolve; });
-    entry = { ref, content: emptySessionInput(), generation: ++serial, version: 0, saved: 0, users:0, touched:Date.now(), tasks: new Set(), retirement, retire }; entries.set(key, entry);
+    entry = { ref, content: emptySessionInput(), generation: ++serial, version: 0, saved: 0, users:0, touched:Date.now(), tasks: new Set(), inputTasks: new Set(), retirement, retire }; entries.set(key, entry);
   }
   return entry;
 }
@@ -202,6 +203,9 @@ export async function beginPersistedComposerSubmission(tabId: string, submission
   if (!entry) return undefined;
   await flush(entry);
   if (!owner || tabs.get(tabId) !== key || tabOwners.get(tabId) !== owner) throw new Error("reasonix_error:inbox_not_submitted");
+  // Accepted input must publish before a submission can freeze this draft.
+  // Submission tasks also participate in close draining, but never in this guard.
+  if (entry.inputTasks.size) throw new Error("Input is still being prepared; review and send again");
   if (expectedEdit !== undefined && entry.version !== expectedEdit) throw new Error("Input changed while preparing submission; review and send again");
   if (exiting || !entry.state || locked(entry)) throw new Error("Review the saved input before sending");
   const submittedVersion = entry.version;
@@ -303,7 +307,13 @@ export function useSessionComposerPersistence(ref: SessionRef | undefined, tabId
     // Already accepted tasks still publish through onPatch while closing.
     onChange:(_id,generation,content) => { if (generation===entry.generation) edit(entry,content); },
     onPatch:(_id,generation,patch) => { if (!entry.retired && generation===entry.generation) edit(entry,{ ...entry.content,...(typeof patch==="function" ? patch(entry.content) : patch) },true); },
-    trackTask:(_id,generation,promise) => { if (!entry.retired && generation===entry.generation) { entry.tasks.add(promise); void promise.finally(()=>{entry.tasks.delete(promise);prune();}).catch(()=>{}); } return promise; },
+    trackTask:(_id,generation,promise,blocksSubmission) => {
+      if (!entry.retired && generation===entry.generation) {
+        entry.tasks.add(promise); if (blocksSubmission) entry.inputTasks.add(promise);
+        void promise.finally(()=>{entry.tasks.delete(promise);entry.inputTasks.delete(promise);prune();}).catch(()=>{});
+      }
+      return promise;
+    },
     // Failed attachment operations remain visible, but do not make the
     // retained input unreadable or prevent its independent durable save.
     onTaskError:(_id,generation,error) => { if (!entry.retired && generation===entry.generation) { entry.taskError=error; notify(); } },
