@@ -1168,7 +1168,10 @@ export const app: AppBindings = new Proxy({} as AppBindings, {
         const result = maybeShare(method, args, () => (v as (...a: unknown[]) => unknown).apply(target, args));
         if (result && typeof (result as Promise<unknown>).then === "function") {
           return (result as Promise<unknown>).then(
-            (value) => {
+            async (value) => {
+              if (method === "ApplySessionLifecycle" || method === "PurgeCanonicalSession") {
+                (await import("./sessionComposerPersistence")).reconcileSessionComposerPurge(method, args, value);
+              }
               if (crumb) addBreadcrumb("bridge", `${crumb} done ms=${elapsedMs(startedAt)}`);
               return value;
             },
