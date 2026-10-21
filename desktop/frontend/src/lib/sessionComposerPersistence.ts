@@ -8,7 +8,7 @@ import { submissionOutcome, modelApplicationError, type ModelApplicationDetails 
 
 export const emptySessionInput = (): PersistentComposerDraft => ({ text: "", invocations: [], attachments: [], workspaceRefs: [], pastedBlocks: [], openPastedLabels: [], sessionRefs: [], selectedTextRefs: [] });
 type Entry = { ref: SessionRef; state?: SessionComposerState; content: PersistentComposerDraft; generation: number; version: number; saved: number; users: number; touched: number;
-  application?: ModelApplicationDetails; error?: string; unreadable?: boolean; registering?: boolean; recovering?: Promise<void>; unsubmittedId?: string; settledId?: string; tasks: Set<Promise<unknown>>; loading?: Promise<void>; saving?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
+  application?: ModelApplicationDetails; error?: string; taskError?: string; unreadable?: boolean; registering?: boolean; recovering?: Promise<void>; unsubmittedId?: string; settledId?: string; tasks: Set<Promise<unknown>>; loading?: Promise<void>; saving?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
 const entries = new Map<string, Entry>();
 const tabs = new Map<string, string>();
 const tabOwners = new Map<string, symbol>();
@@ -83,11 +83,8 @@ async function load(entry: Entry) {
       if (entry.version !== entry.saved) return;
       const content=parse(state.contentJson);
       entry.state = state; entry.content = content; entry.error = undefined; entry.unreadable = false;
-      const tabId = [...tabs].find(([, key]) => key === keyFor(entry.ref))?.[0];
-      if (tabId && content.workspaceRefs.length > 0) {
-        const { restoreExternalFolderReferences } = await import("./attachmentSubmit");
-        await restoreExternalFolderReferences(app, {kind:"session",session:entry.ref,tabId}, content.workspaceRefs);
-      }
+      // Reading durable input must not require a live attachment controller.
+      // Composer restores and validates external references before submission.
       const attachments = entry.content.attachments;
       void Promise.all(attachments.map(async attachment => {
         try {
@@ -130,7 +127,7 @@ async function flush(entry: Entry) {
 }
 function edit(entry: Entry, content: PersistentComposerDraft) {
   if (locked(entry)) return;
-  entry.content = content; entry.version++; entry.error = undefined; entry.application = undefined;
+  entry.content = content; entry.version++; entry.error = undefined; entry.taskError = undefined; entry.application = undefined;
   if (entry.timer) clearTimeout(entry.timer);
   entry.timer = setTimeout(() => {
     void flush(entry).catch(async () => { await recoverInput(entry); if (!locked(entry)) await flush(entry); }).catch(() => {});
@@ -144,6 +141,11 @@ export async function flushAllSessionComposers() {
   try {
     for (const entry of entries.values()) {
       while (entry.tasks.size) await Promise.allSettled([...entry.tasks]);
+      // Loading/recovery can reveal an error or unsaved input even when the
+      // version looked clean at the start of close. Never skip those barriers.
+      if (entry.loading) await entry.loading;
+      if (entry.recovering) await entry.recovering;
+      if (entry.saving) await entry.saving;
       if (entry.version > entry.saved || entry.error) await flush(entry);
     }
   } catch (error) { exiting = false; throw error; }
@@ -250,9 +252,12 @@ export function useSessionComposerPersistence(ref: SessionRef | undefined, tabId
     onChange:(_id,generation,content) => { if (generation===entry.generation) edit(entry,content); },
     onPatch:(_id,generation,patch) => { if (generation===entry.generation) edit(entry,{ ...entry.content,...(typeof patch==="function" ? patch(entry.content) : patch) }); },
     trackTask:(_id,_generation,promise) => { entry.tasks.add(promise); void promise.finally(()=>{entry.tasks.delete(promise);prune();}).catch(()=>{}); return promise; },
-    onTaskError:(_id,_generation,error) => { entry.error=error; notify(); },
+    // Failed attachment operations remain visible, but do not make the
+    // retained input unreadable or prevent its independent durable save.
+    onTaskError:(_id,_generation,error) => { entry.taskError=error; notify(); },
   } : undefined;
-  return { target, blocked:entry ? exiting || locked(entry) : false, error:entry?.error,
+  return { target, blocked:entry ? exiting || locked(entry) : false, error:entry?.error, taskError:entry?.taskError,
+    dismissTaskError:() => { if (entry) { entry.taskError=undefined; notify(); } },
     application:entry?.application,
     setApplication:(value:ModelApplicationDetails|undefined)=>{if(entry){entry.application=value;notify();}},
     reportSubmissionError:(error:unknown) => { if (entry) {entry.application=modelApplicationError(error);notify();} },
