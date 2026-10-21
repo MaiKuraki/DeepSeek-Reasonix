@@ -138,17 +138,25 @@ function edit(entry: Entry, content: PersistentComposerDraft) {
 export async function flushAllSessionComposers() {
   exiting = true;
   notify();
+  // Retry cached failures once per close attempt. A new failure must still
+  // veto close, and recovery must reconcile the store before retaining edits.
+  const retryable = new Set([...entries.values()].filter(entry => entry.error));
   try {
-    for (const entry of entries.values()) {
-      while (entry.tasks.size) await Promise.allSettled([...entry.tasks]);
-      // Loading/recovery can reveal an error or unsaved input even when the
-      // version looked clean at the start of close. Never skip those barriers.
-      if (entry.loading) await entry.loading;
-      if (entry.recovering) await entry.recovering;
-      if (entry.saving) await entry.saving;
-      if (entry.version > entry.saved || entry.error) await flush(entry);
-    }
-  } catch (error) { exiting = false; throw error; }
+    do {
+      for (const entry of entries.values()) {
+        while (entry.tasks.size) await Promise.allSettled([...entry.tasks]);
+        // Loading/recovery can reveal an error or unsaved input even when the
+        // version looked clean at the start of close. Never skip those barriers.
+        if (entry.loading) await entry.loading;
+        if (entry.recovering) await entry.recovering;
+        if (entry.saving) await entry.saving;
+        if (entry.error && retryable.delete(entry)) await recoverInput(entry);
+        if (entry.version > entry.saved || entry.error) await flush(entry);
+      }
+      // Accepted work may attach a continuation to an owner already visited
+      // while another owner's save was pending. Require global quiescence.
+    } while ([...entries.values()].some(entry => entry.tasks.size || entry.loading || entry.recovering || entry.saving || entry.version > entry.saved || entry.error));
+  } catch (error) { resumeSessionComposerEditing(); throw error; }
 }
 export function resumeSessionComposerEditing() { exiting = false; notify(); }
 
@@ -248,7 +256,8 @@ export function useSessionComposerPersistence(ref: SessionRef | undefined, tabId
   const target: PersistentComposerTarget | undefined = entry ? {
     draftId:key, generation:entry.generation, initial:entry.content, revision:entry.version,
     isCurrent:(id,generation) => id===key && generation===entry.generation,
-    canEdit:() => !locked(entry),
+    canEdit:() => !exiting && !locked(entry),
+    // Already accepted tasks still publish through onPatch while closing.
     onChange:(_id,generation,content) => { if (generation===entry.generation) edit(entry,content); },
     onPatch:(_id,generation,patch) => { if (generation===entry.generation) edit(entry,{ ...entry.content,...(typeof patch==="function" ? patch(entry.content) : patch) }); },
     trackTask:(_id,_generation,promise) => { entry.tasks.add(promise); void promise.finally(()=>{entry.tasks.delete(promise);prune();}).catch(()=>{}); return promise; },
@@ -263,7 +272,7 @@ export function useSessionComposerPersistence(ref: SessionRef | undefined, tabId
     reportSubmissionError:(error:unknown) => { if (entry) {entry.application=modelApplicationError(error);notify();} },
     // Editable retained text does not authorize restoring a mode from older history.
     goalDraft:!entry?.state?.historyChanged && entry?.content.goalDraft,
-    setGoalDraft:(enabled:boolean) => { if (entry) edit(entry,{...entry.content,goalDraft:enabled}); },
+    setGoalDraft:(enabled:boolean) => { if (entry && !exiting) edit(entry,{...entry.content,goalDraft:enabled}); },
     settleSubmission:async (id:string) => { if (entry?.state?.submissionId === id) await settleSubmission(entry,id,"accepted",entry.version); },
     attention: Boolean(entry?.state?.submissionId),
     recovering: Boolean(entry?.recovering),
