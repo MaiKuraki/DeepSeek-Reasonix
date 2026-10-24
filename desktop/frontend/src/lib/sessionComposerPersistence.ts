@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { app } from "./bridge";
+import { app, sessionPurgeHandlers } from "./bridge";
 import type { SessionRef } from "./sessionRef";
 import type { PersistentComposerDraft, PersistentComposerTarget } from "./composerDraftTypes";
 import type { SessionComposerState, SessionLifecycleResult } from "../generated/desktopContract.generated";
@@ -61,6 +61,10 @@ export function reconcileSessionComposerPurge(method: string, args: unknown[], r
     for (const [tab, mapped] of tabs) if (mapped === key) { tabs.delete(tab); tabOwners.delete(tab); }
   }
   notify();
+}
+// Register before any composer owner can exist, including while an RPC is pending.
+for (const method of ["ApplySessionLifecycle", "PurgeCanonicalSession"]) {
+  sessionPurgeHandlers[method] = (args, result) => reconcileSessionComposerPurge(method, args, result);
 }
 function prune() {
   const idle=[...entries.entries()].filter(([,entry])=>entry.users===0 && entry.state && !entry.error && !entry.recovering && !entry.loading && !entry.saving && !entry.tasks.size && entry.version===entry.saved).sort((a,b)=>b[1].touched-a[1].touched);
