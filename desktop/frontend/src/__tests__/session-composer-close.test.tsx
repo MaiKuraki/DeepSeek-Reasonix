@@ -45,9 +45,9 @@ test("closing formal session input preserves drafts without depending on attachm
     const target = editor.target!;
     target.onPatch!(target.draftId, target.generation, { text });
   };
-  const attachmentError = () => {
+  const attachmentError = (message = "unsupported: attachments-v2") => {
     const target = editor.target!;
-    target.onTaskError!(target.draftId, target.generation, "unsupported: attachments-v2");
+    target.onTaskError!(target.draftId, target.generation, message);
   };
   const close = () => window.__reasonixFlushSessionDraft!();
   const saved = async (session: string) => JSON.parse((await backend.GetSessionComposerState(ref(session))).contentJson);
@@ -65,14 +65,17 @@ test("closing formal session input preserves drafts without depending on attachm
 
     await t.test("a failed attachment on blank input stays visible but does not veto close", async () => {
       await paint("blank-warning");
-      await act(async () => attachmentError());
+      await act(async () => attachmentError("unsupported: attachments-v2\nTrace: attachment-target"));
       assert.equal(editor.error, undefined);
-      assert.match(document.querySelector('[role="alert"]')!.textContent!, /unsupported: attachments-v2/);
+      assert.equal(document.querySelector('.user-error__summary')!.textContent, "unsupported: attachments-v2");
+      assert.equal(document.querySelector('.user-error__detail'), null, "raw diagnostics start collapsed");
+      await act(async () => document.querySelector<HTMLButtonElement>('.user-error__toggle')!.click());
+      assert.match(document.querySelector('.user-error__detail')!.textContent!, /Trace: attachment-target/);
       assert.doesNotMatch(document.body.textContent!, /Retry to recover saving/);
       assert.equal(editor.target!.initial.text, "");
       try {
         await act(async () => close());
-        await act(async () => document.querySelector<HTMLButtonElement>('[role="alert"] button')!.click());
+        await act(async () => document.querySelector<HTMLButtonElement>('[role="alert"] > button')!.click());
         assert.equal(document.querySelector('[role="alert"]'), null);
       }
       finally { await act(async () => editor.retry()); await resume(); }

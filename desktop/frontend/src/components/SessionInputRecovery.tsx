@@ -1,5 +1,6 @@
 import { useT } from "../lib/i18n";
 import type { useSessionComposerPersistence } from "../lib/sessionComposerPersistence";
+import { ErrorMessage } from "./ErrorMessage";
 
 type InputState = ReturnType<typeof useSessionComposerPersistence>;
 
@@ -8,7 +9,7 @@ export function SessionInputRecovery({ input }: { input: InputState }) {
   if (!input.error && !input.attention && !input.recovering) {
     if (!input.taskError) return null;
     return <div role="alert" className="session-draft-surface__error">
-      <span>{input.taskError}</span>
+      <ErrorMessage error={input.taskError} />
       <button type="button" onClick={input.dismissTaskError}>{t("common.close")}</button>
     </div>;
   }
