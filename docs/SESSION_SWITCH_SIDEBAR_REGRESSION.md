@@ -242,3 +242,29 @@ Desktop 全量验证采用既有分组工具及完整性清单。测试入口和
 隔离目录，应清除继承的 `REASONIX_HOME` 覆盖。终止状态通知回归现解析并检查状态、
 错误、发布版本和恰好一次通知，替代会拒绝新增可选字段的旧完整 JSON 字符串比较；
 更新契约后，受影响的 Q-S 分组已完整重跑通过。
+
+## Projection path admission / 索引路径构造边界
+
+The integrity-audit path originates from the host's `FilesystemPersistence.Root`,
+the fixed `.query-cache` directory, a canonical SessionID, and a fixed history
+or search filename. Public query admission already validates the SessionRef.
+The shared `sessionProjectionPath` constructor now independently rejects
+non-local or invalid canonical IDs before joining any path. It no longer
+reduces an invalid identity with `filepath.Base`, which could otherwise alias
+another session or leave the per-session cache directory. SQLite and integrity
+proof reads consume the same constructed path; no CodeQL suppression is added.
+
+完整性校验路径由宿主的 `FilesystemPersistence.Root`、固定 `.query-cache` 目录、
+规范 SessionID 和固定历史或搜索文件名构成。公开查询入口已有 SessionRef 校验；
+共用路径构造函数现在也会在拼接前独立拒绝非本地路径及非法会话身份，不再通过
+`filepath.Base` 将非法输入降为另一个会话名或脱离单会话缓存目录。SQLite 打开与
+校验凭据读取使用同一个构造结果，没有增加 CodeQL 忽略规则。
+
+`TestProjectionPathsRejectInvalidSessionIdentity` covers parent traversal,
+absolute and multi-component IDs, Windows separators/reserved names, empty/dot
+IDs, control bytes and oversized IDs, while retaining valid Unicode IDs and
+roots containing spaces or punctuation. The unchanged-file audit, WAL and
+replacement-during-open regressions remain in the race-test gate.
+新增测试覆盖父目录跳转、绝对路径、多段身份、Windows 分隔符和保留名、空值与
+点目录、控制字符及超长身份，同时保持 Unicode 身份和含空格、标点的正常根目录
+可用；文件未变时复用、WAL 变化和打开期间替换的回归仍保留在竞态检查中。

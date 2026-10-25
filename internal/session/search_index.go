@@ -48,7 +48,7 @@ type searchPreparation struct {
 }
 
 func searchIndexPath(root, sessionID string) string {
-	return filepath.Join(root, ".query-cache", filepath.Base(sessionID), "search-v1.sqlite")
+	return sessionProjectionPath(root, sessionID, "search-v1.sqlite")
 }
 
 func (q *Query) SearchHistory(ctx context.Context, ref SessionRef, textQuery, cursor string, limit int) (SearchHistoryPage, error) {

@@ -154,7 +154,7 @@ func (s *historyBuildStatements) close() {
 }
 
 func historyIndexPath(root, sessionID string) string {
-	return filepath.Join(root, ".query-cache", filepath.Base(sessionID), "history-locator-v2.sqlite")
+	return sessionProjectionPath(root, sessionID, "history-locator-v2.sqlite")
 }
 
 var historyMigrations = []projectiondb.Migration{{Version: 1, Apply: func(ctx context.Context, tx *sql.Tx) error {
