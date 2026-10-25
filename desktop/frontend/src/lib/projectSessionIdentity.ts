@@ -42,9 +42,11 @@ export function projectSessionResolver(nodes: readonly ProjectNode[]): (node: Pr
 }
 
 export function projectSessionExcluded(node: ProjectNode, excluded: ReadonlySet<string>): boolean {
+  // A topic archive fences by the topicId it removed, whatever the row's identity.
+  if (node.topicId && excluded.has(node.topicId)) return true;
   const canonical = canonicalProjectSession(node);
   if (canonical) return excluded.has(canonical);
-  return projectSessionKeys(node).some(key => excluded.has(key)) || Boolean(node.topicId && excluded.has(node.topicId));
+  return projectSessionKeys(node).some(key => excluded.has(key));
 }
 
 /** A source keeps its mounted row key when its owner publishes canonical aliases. */

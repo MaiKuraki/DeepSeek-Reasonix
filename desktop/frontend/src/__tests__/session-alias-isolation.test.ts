@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sameProjectSession, projectSessionExcluded, projectSessionIdentity } from "../lib/projectSessionIdentity";
-import { mergeProjectTopicPage, mergeIncompleteProjectTopicPage } from "../lib/projectTreeTopic";
+import { mergeProjectTopicPage, mergeIncompleteProjectTopicPage, projectTreeWithoutTopic, projectTreeWithoutTopics } from "../lib/projectTreeTopic";
 import { createSessionLifecycleFences } from "../lib/sessionLifecycleFences";
 import { projectTreeApplyRuntimeTopics } from "../lib/projectTreeRuntime";
 import type { ProjectNode } from "../lib/types";
@@ -54,6 +54,18 @@ test("archiving and restoring one owner cannot hide or restore a different owner
   assert.equal(projectSessionExcluded(source, fences.keys()), true, "another archive still owns the shared alias");
   fences.observeDirectory([{ ...b, lifecycleGeneration: 21 }]);
   assert.equal(fences.keys().size, 0);
+});
+
+test("a committed topic archive removes and fences its canonical row", () => {
+  const topic: ProjectNode = { ...a, topicId: "topic-a" };
+  const tree: ProjectNode[] = [{ key: "p", kind: "project", root: "/repo", label: "Project", children: [topic, b] }];
+  assert.deepEqual(ids(projectTreeWithoutTopic(tree, "topic-a")[0].children!), ids([b]));
+  const tombstones = new Set(["topic-a"]);
+  assert.deepEqual(ids(projectTreeWithoutTopics(tree, tombstones)[0].children!), ids([b]));
+  const projected = projectTreeApplyRuntimeTopics([{ ...tree[0], children: [b] }], [
+    { scope: "project", workspaceRoot: "/repo", node: { ...topic, running: true } },
+  ], tombstones)[0].children!;
+  assert.deepEqual(ids(projected), ids([b]));
 });
 
 test("source archive receipts retain independent canonical owners through restoration", () => {
