@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"strings"
 	"sync"
 
 	"reasonix/desktop/internal/workspacestate"
@@ -42,7 +41,7 @@ func adoptedSourceRows(state workspacestate.State) map[string]bool {
 func sourceMappingHasPathAlias(mapping workspacestate.SourceMapping) bool {
 	// A reviewed version is a separate conversation, not another owner of
 	// the original path. Only its versioned SourceKey may alias that session.
-	if strings.Contains(mapping.SourceKey, ":review:") {
+	if historicalVersionSourceKey(mapping.SourceKey) {
 		return false
 	}
 	if mapping.HeadID == "" {

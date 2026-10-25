@@ -22,19 +22,22 @@ func (a *App) RemoteTabHydrationState(tabID string) (RemoteTabStateView, error) 
 	return RemoteTabStateView{State: tab.state, Error: tab.err, HydrationRevision: tab.publication.hydrationRevision}, nil
 }
 
+// publishRemoteTabState is the only writer of the state channel, so every
+// publication carries the tab's next hydration revision. Callers must not hold
+// remoteTabMu.
+func (a *App) publishRemoteTabState(tabID string, view RemoteTabStateView) {
+	a.remoteTabMu.Lock()
+	if tab := a.remoteTabs[tabID]; tab != nil {
+		tab.publication.hydrationRevision++
+		view.HydrationRevision = tab.publication.hydrationRevision
+	}
+	a.remoteTabMu.Unlock()
+	a.emitRemoteEvent(fmt.Sprintf("remote-tab:%s:state", tabID), view)
+}
+
 // emitRemoteEvent bridges a kernel callback to the frontend through the async
 // emitter so a slow webview never blocks the kernel.
 func (a *App) emitRemoteEvent(name string, payload any) {
-	if view, ok := payload.(RemoteTabStateView); ok && strings.HasPrefix(name, "remote-tab:") && strings.HasSuffix(name, ":state") {
-		tabID := strings.TrimSuffix(strings.TrimPrefix(name, "remote-tab:"), ":state")
-		a.remoteTabMu.Lock()
-		if tab := a.remoteTabs[tabID]; tab != nil {
-			tab.publication.hydrationRevision++
-			view.HydrationRevision = tab.publication.hydrationRevision
-		}
-		a.remoteTabMu.Unlock()
-		payload = view
-	}
 	if a.remoteEventHook != nil {
 		a.remoteEventHook(name, payload)
 	}

@@ -32,6 +32,19 @@ func TestWorkspaceSourceAliasesKeepReviewedSessionsIndependent(t *testing.T) {
 	}
 }
 
+func TestHistoricalVersionSourceKeyRequiresSourceAndVersion(t *testing.T) {
+	for key, want := range map[string]bool{
+		"abc:review:v2": true,
+		"abc":           false,
+		"abc:review:":   false,
+		":review:v2":    false,
+	} {
+		if got := historicalVersionSourceKey(key); got != want {
+			t.Errorf("historicalVersionSourceKey(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
+
 func TestWorkspaceSourceAliasesRejectAmbiguousPathOwnership(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.jsonl")
 	state := workspacestate.State{SourceMappings: map[string]workspacestate.SourceMapping{
