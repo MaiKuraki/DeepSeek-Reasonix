@@ -154,7 +154,7 @@ func (s *historyBuildStatements) close() {
 }
 
 func historyIndexPath(root, sessionID string) string {
-	return filepath.Join(root, ".query-cache", filepath.Base(sessionID), "history-locator-v2.sqlite")
+	return sessionProjectionPath(root, sessionID, "history-locator-v2.sqlite")
 }
 
 var historyMigrations = []projectiondb.Migration{{Version: 1, Apply: func(ctx context.Context, tx *sql.Tx) error {
@@ -260,7 +260,7 @@ func (q *Query) HistoryPage(ctx context.Context, ref SessionRef, cursor string, 
 	if !ready {
 		return MessageHistoryPage{Messages: []PersistentMessage{}, Status: "preparing"}, nil
 	}
-	handle, err := projectiondb.Open(ctx, projectiondb.OpenOptions{Path: path, Migrations: historyMigrations, RequireDisk: true, MaxOpenConns: 1})
+	handle, err := openHistoryProjection(ctx, path)
 	if err != nil {
 		return MessageHistoryPage{}, err
 	}
@@ -375,7 +375,7 @@ func (q *Query) LocateMessage(ctx context.Context, ref SessionRef, messageID str
 	if !ready {
 		return MessageLocation{Status: "preparing", MessageID: messageID}, nil
 	}
-	handle, err := projectiondb.Open(ctx, projectiondb.OpenOptions{Path: path, Migrations: historyMigrations, RequireDisk: true, MaxOpenConns: 1})
+	handle, err := openHistoryProjection(ctx, path)
 	if err != nil {
 		return MessageLocation{}, err
 	}
@@ -465,7 +465,7 @@ func (q *Query) HistoryShape(ctx context.Context, ref SessionRef) (HistoryShape,
 		return HistoryShape{}, err
 	}
 	_ = filesystem
-	handle, err := projectiondb.Open(ctx, projectiondb.OpenOptions{Path: path, Migrations: historyMigrations, RequireDisk: true, MaxOpenConns: 1})
+	handle, err := openHistoryProjection(ctx, path)
 	if err != nil {
 		return HistoryShape{}, err
 	}
@@ -506,7 +506,7 @@ func (q *Query) HistoryWindow(ctx context.Context, ref SessionRef, snapshot uint
 	if start < 0 || end < start {
 		return nil, errors.New("session: invalid history window")
 	}
-	handle, err := projectiondb.Open(ctx, projectiondb.OpenOptions{Path: path, Migrations: historyMigrations, RequireDisk: true, MaxOpenConns: 1})
+	handle, err := openHistoryProjection(ctx, path)
 	if err != nil {
 		return nil, err
 	}
