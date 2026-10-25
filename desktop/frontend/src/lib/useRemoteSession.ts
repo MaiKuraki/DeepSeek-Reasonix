@@ -3,6 +3,7 @@ import { useRuntimeSession } from "./useRuntimeState";
 import { createLegacyRemotePolicyNoticeTracker } from "./legacyRemotePolicyNotice";
 import { app, onRemoteTabEvent, onRemoteTabState } from "./bridge";
 import { createRemoteHydrationOwner } from "./remoteHydrationOwner";
+import { desktopHost } from "./desktopHost";
 import { queuedFollowupOutcome } from "./pendingFollowup";
 import { onRemoteTabUpdated } from "./remoteTabEvents";
 import { hydrateRemoteTelemetry, loadRemoteStatusSnapshot } from "./remoteTelemetry";
@@ -481,12 +482,30 @@ export function useRemoteSession(tabId: string | undefined, initial?: RemoteTabS
     if (revivedFromShell) void app.SetActiveTab(tabId).catch(() => undefined);
     paintResidentCache();
     void primeEarlyHistory();
-    const initialGeneration = generation;
-    void Promise.resolve().then(() => app.RemoteTabHydrationState?.(tabId)).catch(() => undefined).then(next => {
-      if (cancelled || generation !== initialGeneration) return;
+    const refreshHydration = async () => {
+      if (cancelled || !serviceReady) return;
+      const ticket = generation;
+      let next;
+      try { next = await app.RemoteTabHydrationState?.(tabId); } catch { /* Older hosts lack this read. */ }
+      if (cancelled || !serviceReady || generation !== ticket) return;
       if (next) acceptState(next);
-      else void hydrate(); // Older hosts do not publish hydration revisions.
+      else void hydrate();
+    };
+    let serviceGeneration: string | undefined, serviceReady = true;
+    // The shell's desktop:resync read follows reattachment; native states
+    // invalidate the old owner without starting a competing recovery read.
+    const offService = desktopHost().native.onServiceState(({ phase, generation: nextGeneration }) => {
+      const replacing = serviceGeneration && nextGeneration && serviceGeneration !== nextGeneration;
+      serviceGeneration = nextGeneration ?? serviceGeneration;
+      serviceReady = phase === "ready";
+      if (replacing || !serviceReady) {
+        generation++;
+        hydration.reset();
+        follower?.stop(false, "service_stopping");
+      }
     });
+    const offResync = desktopHost().events.on("desktop:resync", refreshHydration);
+    refreshHydration();
     return () => {
       submitBindingRef.current = {};
       cancelled = true;
@@ -496,6 +515,8 @@ export function useRemoteSession(tabId: string | undefined, initial?: RemoteTabS
       offState();
       offMeta();
       offEvent();
+      offService();
+      offResync();
       olderRef.current = undefined;
       navigateRef.current = undefined;
       newerRef.current = undefined;

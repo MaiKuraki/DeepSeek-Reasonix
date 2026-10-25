@@ -5,10 +5,11 @@ export function createRemoteHydrationOwner(run: () => Promise<boolean>) {
   let request: Promise<void> | undefined;
   let installed = false;
   return {
+    reset(next = -1) { revision = next; request = undefined; installed = false; },
     observe(next: number | undefined) {
       if (next === undefined) return true;
       if (next < revision) return false;
-      if (next > revision) { revision = next; request = undefined; installed = false; }
+      if (next > revision) this.reset(next);
       return true;
     },
     load(next?: number): Promise<void> {

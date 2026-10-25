@@ -70,9 +70,15 @@ try {
   await page.getByRole("button", { name: "Replay ready", exact: true }).click();
   assert.equal(await page.locator("output").getAttribute("data-session"), "session-3");
   assert.equal(await page.locator("output").getAttribute("data-reads"), "3");
+  await page.getByRole("button", { name: "Restart service", exact: true }).click();
+  await page.locator('output[data-reads="4"]').waitFor();
+  await page.getByRole("button", { name: "Deliver latest", exact: true }).click();
+  await page.locator('output[data-hydrated="true"][data-session="session-1"]').waitFor();
+  await page.getByRole("button", { name: "Replay ready", exact: true }).click();
+  assert.equal(await page.locator("output").getAttribute("data-reads"), "4");
   assert.deepEqual(errors, [], "remote browser console is clean");
   await page.screenshot({ path: path.join(evidence, "remote-verified.png") });
-  await writeFile(path.join(evidence, "remote-results.json"), JSON.stringify({ reads: 3, revisions: 3, duplicateReady: 7, staleCutIgnored: true, errors }, null, 2));
+  await writeFile(path.join(evidence, "remote-results.json"), JSON.stringify({ reads: 4, revisions: 3, duplicateReady: 8, serviceRestarts: 1, staleCutIgnored: true, errors }, null, 2));
   console.log("PASS remote duplicate ready, genuine resets and stale baseline completion in Chromium");
 } finally {
   await browser?.close();

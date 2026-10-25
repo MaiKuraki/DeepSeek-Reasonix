@@ -268,3 +268,31 @@ replacement-during-open regressions remain in the race-test gate.
 新增测试覆盖父目录跳转、绝对路径、多段身份、Windows 分隔符和保留名、空值与
 点目录、控制字符及超长身份，同时保持 Unicode 身份和含空格、标点的正常根目录
 可用；文件未变时复用、WAL 变化和打开期间替换的回归仍保留在竞态检查中。
+
+## Surviving-renderer recovery / 服务重启后的前端恢复
+
+Remote tab IDs survive a desktop service restart, while their publication
+revisions restart from zero. The hydration owner must therefore retire its
+revision watermark when the native service generation changes or becomes
+unavailable. The existing `desktop:resync` event then reads the replacement
+service's publication and establishes one baseline. Repeated recovery signals
+inside the same service remain coalesced; old baseline/state-RPC completions
+cannot install the retired service's revision. Shutdown sends no subscription
+cleanup to the replacement service, and resident transcript content is retained.
+
+桌面服务重启会沿用远程标签页 ID，但通知版本从零重新计数。因此，原生服务代次
+变化或服务不可用时必须清除旧加载归属及版本水位，再由已有 `desktop:resync`
+事件读取新服务状态并建立一次基线。同一服务内的重复恢复信号仍会合并；旧基线
+及旧状态 RPC 晚到不能覆盖新服务的版本。关闭旧服务时不向新服务发送订阅清理，
+已展示的历史内容保持可读。
+
+The real hook regression failed before this repair (no baseline after restart).
+It now covers restart with and without a shutdown event, stale state responses,
+and duplicate resync. Chromium verifies restart to revision 1 on the surviving
+surface. This adds 311 initial raw bytes over the prior fix: 2,109,672 versus
+2,107,862 on main-v2 (+1,810 bytes, 0.086%). The raw ceiling is 2060.5 KiB with
+the same 186-byte producer margin; other bundle limits remain unchanged.
+真实 Hook 回归在修复前失败（重启后没有新基线），现覆盖有、无关闭通知的重启、
+旧状态响应及重复 resync；Chromium 验证存活界面接纳从 1 开始的新版本。首屏原始
+体积较上一轮修复增加 311 字节，完整修复为 2,109,672 字节，比主线增加 1,810 字节
+（0.086%）；阈值为 2060.5 KiB，保留同样的 186 字节生产构建余量，其他限额不变。

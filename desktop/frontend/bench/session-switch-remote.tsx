@@ -40,6 +40,13 @@ function Fixture() {
     <h1>Remote session hydration</h1>
     <button onClick={ready}>Replay ready</button>
     <button onClick={() => { revision++; ready(); }}>New generation</button>
+    <button onClick={() => {
+      stub.emitServiceState({ phase: "stopping", generation: "test-service" });
+      revision = 1;
+      stub.emitServiceState({ phase: "ready", generation: "replacement-service" });
+      stub.emit("desktop:resync", {});
+      ready();
+    }}>Restart service</button>
     <button onClick={() => deliver(pending.pop())}>Deliver latest</button>
     <button onClick={() => deliver(pending.shift())}>Deliver oldest</button>
     <output data-reads={count} data-hydrated={session.hydrated} data-session={session.transcript.transcriptSessionId}>

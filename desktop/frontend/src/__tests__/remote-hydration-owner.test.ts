@@ -38,3 +38,18 @@ test("disconnect fences an old baseline and reconnect owns a new revision", asyn
   requests.shift()!(true);
   await next;
 });
+
+test("service replacement resets revision ordering without adopting the retired request", async () => {
+  const requests: Array<(success: boolean) => void> = [];
+  const owner = createRemoteHydrationOwner(() => new Promise(resolve => requests.push(resolve)));
+  const old = owner.load(50);
+  owner.reset();
+  const replacement = owner.load(1);
+  requests.shift()!(true);
+  await old;
+  assert.equal(owner.load(1), replacement);
+  requests.shift()!(true);
+  await replacement;
+  await owner.load(1);
+  assert.equal(requests.length, 0);
+});

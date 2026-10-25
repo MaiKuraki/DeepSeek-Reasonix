@@ -93,6 +93,46 @@ try {
   await act(async () => pending.shift()!(response("reconnected")));
   await drain();
   assert.equal(probe.transcript.transcriptSessionId, "reconnected");
+  await act(async () => stub.emitServiceState({ phase: "stopping", generation: "test-service" }));
+  await act(async () => {
+    revision = 1;
+    stub.emitServiceState({ phase: "ready", generation: "replacement-service" });
+    stub.emit("desktop:resync", {});
+    ready(1);
+  });
+  await drain();
+  assert.equal(reads, 9, "a surviving renderer accepts revision 1 from the replacement service");
+  await act(async () => pending.shift()!(response("restarted-service")));
+  await drain();
+  assert.equal(probe.transcript.transcriptSessionId, "restarted-service");
+  await act(async () => {
+    stub.emitServiceState({ phase: "ready", generation: "third-service" });
+    stub.emit("desktop:resync", {});
+  });
+  await drain();
+  assert.equal(reads, 10, "a changed service generation also fences a missed shutdown event");
+  await act(async () => pending.shift()!(response("third-service")));
+  await drain();
+  await act(async () => { stub.emit("desktop:resync", {}); ready(1); });
+  await drain();
+  assert.equal(reads, 10, "repeated resync within the same service preserves its installed baseline");
+  let oldState!: (value: { state: string; hydrationRevision: number }) => void;
+  let stateReads = 0;
+  stub.commands.RemoteTabHydrationState = async () => ++stateReads === 1
+    ? new Promise(resolve => { oldState = resolve; }) : { state: "ready", hydrationRevision: 1 };
+  await act(async () => stub.emit("desktop:resync", {}));
+  await drain();
+  await act(async () => {
+    stub.emitServiceState({ phase: "ready", generation: "fourth-service" });
+    stub.emit("desktop:resync", {});
+  });
+  await drain();
+  await act(async () => oldState({ state: "ready", hydrationRevision: 99 }));
+  await drain();
+  assert.equal(reads, 11, "a stale state RPC cannot install the retired service's higher revision");
+  await act(async () => pending.shift()!(response("fourth-service")));
+  await drain();
+  assert.equal(probe.transcript.transcriptSessionId, "fourth-service");
   console.log("PASS remote hydration owns one baseline per authoritative ready revision");
 } finally {
   await act(async () => root.unmount());
