@@ -58,9 +58,9 @@ func integrityFileState(path string) (integrityCertificate, bool) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return integrityCertificate{}, false
 	}
-	// SQLite's header includes the change counter and schema cookie. Include
-	// them in addition to metadata, so a checkpoint on coarse-mtime platforms
-	// cannot reuse the proof for an earlier database state.
+	// The header adds the schema cookie and, outside WAL mode, the change
+	// counter. A WAL commit need not bump that counter, so file identity, size
+	// and mtime stay the primary signal that a checkpoint changed the file.
 	return integrityCertificate{main: main, header: string(header[:n])}, true
 }
 
